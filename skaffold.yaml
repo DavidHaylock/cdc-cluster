@@ -1,0 +1,85 @@
+apiVersion: skaffold/v4beta14
+kind: Config
+metadata:
+  name: cdc-documentdb
+
+build:
+  # No git repo at the repo root, so the default gitCommit tagger would fall back
+  # to a constant tag and Helm would never see the image reference change.
+  # inputDigest hashes the build context instead: stable when nothing changed,
+  # new tag as soon as a source file is edited, which is what drives the redeploy.
+  tagPolicy:
+    inputDigest: {}
+
+  local:
+    # Local-only inner loop. Never push to a registry - skaffold detects the
+    # minikube kube-context and builds straight into minikube's image store, so
+    # the chart's `pullPolicy: IfNotPresent` finds the image on the node.
+    push: false
+    useBuildkit: true
+    concurrency: 2
+
+  artifacts:
+    # Image names here are the skaffold artifact keys referenced by the
+    # IMAGE_REPO_* / IMAGE_TAG_* templates in the helm release below.
+    - image: api
+      context: apps/api
+      docker:
+        dockerfile: Dockerfile
+    - image: watcher
+      context: apps/watcher
+      docker:
+        dockerfile: Dockerfile
+
+manifests:
+  # Rendering is done by the helm deployer below, not here.
+  {}
+
+deploy:
+  # Pin the deploy to the cluster `make start-cluster` prepares. Skaffold will
+  # not create or start a cluster/profile of its own.
+  kubeContext: cdc-documentdb
+  # Skaffold's built-in status check waits on *every* deployed workload, and the
+  # watcher can never satisfy it: apps/watcher/src/index.ts only flips its `ready`
+  # flag inside the change-stream "change" handler, so /ready serves 503 until a
+  # document actually changes. On an idle dev database that never happens and
+  # `skaffold dev` would abort and tear the release down. Status check is replaced
+  # by the api-scoped rollout gate in the `after` hook below.
+  statusCheck: false
+  helm:
+    hooks:
+      after:
+        - host:
+            command:
+              - kubectl
+              - rollout
+              - status
+              - deployment/cdc-app-api
+              - --namespace=cdc-documentdb-dev
+              - --timeout=300s
+            os: [darwin, linux]
+    releases:
+      - name: cdc-app
+        chartPath: apps/charts/cdc-app
+        namespace: cdc-documentdb-dev
+        createNamespace: true
+        # charts/mongodb-19.2.1.tgz and charts/watcher-0.1.0.tgz are already
+        # vendored and Chart.lock matches them; skip `helm dep build` so a flaky
+        # or moved Bitnami repo cannot clobber the working vendored charts.
+        skipBuildDependencies: true
+        upgradeOnChange: true
+        setValueTemplates:
+          # The chart builds the image ref as "<repository>:<tag>", so inject the
+          # two halves separately. No IMAGE_DIGEST_* here: digests only exist for
+          # pushed images and this build never pushes.
+          api.image.repository: "{{.IMAGE_REPO_api}}"
+          api.image.tag: "{{.IMAGE_TAG_api}}"
+          watcher.image.repository: "{{.IMAGE_REPO_watcher}}"
+          watcher.image.tag: "{{.IMAGE_TAG_watcher}}"
+
+portForward:
+  - resourceType: service
+    resourceName: cdc-app-api
+    namespace: cdc-documentdb-dev
+    port: 3000
+    localPort: 3000

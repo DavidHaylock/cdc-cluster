@@ -1,0 +1,85 @@
+# The watcher is a singleton: two replicas would process the same change stream
+# twice and fight over the shared resume token in `_watcher_state`.
+replicaCount: 1
+
+image:
+  # Placeholder. Build apps/watcher/Dockerfile, push it to a registry and set
+  # this to the full image reference (e.g. ghcr.io/acme/watcher).
+  repository: watcher
+  # CI/CD should override this with an immutable tag (git sha / semver).
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+database:
+  # Full connection string. When set it wins over the fields below.
+  # Supports Helm templating, e.g. "mongodb://{{ .Release.Name }}-mongodb-headless:27017/mydatabase".
+  url: ""
+  # Supports Helm templating. Defaults to the headless Service created by the
+  # bitnami/mongodb chart when both are installed under the same release.
+  host: "{{ .Release.Name }}-mongodb-headless"
+  port: 27017
+  name: mydatabase
+  # Change streams require a replica set; must match the deployed replica set name.
+  replicaSetName: rs0
+  directConnection: true
+
+healthPort: 3002
+
+extraEnv: []
+# - name: LOG_LEVEL
+#   value: debug
+
+service:
+  type: ClusterIP
+  port: 3002
+  annotations: {}
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+livenessProbe:
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  timeoutSeconds: 3
+  failureThreshold: 3
+readinessProbe:
+  initialDelaySeconds: 5
+  periodSeconds: 10
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+# The watcher never talks to the Kubernetes API.
+automountServiceAccountToken: false
+
+podSecurityContext:
+  runAsNonRoot: true
+  # The image's USER is `bun`, a name - the kubelet can't prove a named user
+  # is non-root, so runAsNonRoot needs an explicit numeric uid/gid to match.
+  runAsUser: 1000
+  runAsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+
+# Change streams reconnect from the stored resume token, so a slow shutdown is
+# cheap compared to losing in-flight events.
+terminationGracePeriodSeconds: 30
+
+podAnnotations: {}
+podLabels: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}

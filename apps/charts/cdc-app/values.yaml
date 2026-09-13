@@ -1,0 +1,126 @@
+nameOverride: ""
+fullnameOverride: ""
+
+api:
+  replicaCount: 1
+
+  image:
+    # Placeholder. Build apps/api/Dockerfile, push it to a registry and set this
+    # to the full image reference (e.g. ghcr.io/acme/api).
+    repository: api
+    # CI/CD should override this with an immutable tag (git sha / semver).
+    tag: "latest"
+    pullPolicy: IfNotPresent
+
+  imagePullSecrets: []
+
+  # Value of the PORT env var and the container port.
+  containerPort: 3000
+
+  service:
+    type: ClusterIP
+    port: 3000
+    annotations: {}
+
+  extraEnv: []
+  # - name: LOG_LEVEL
+  #   value: debug
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+  # The API has no HTTP health endpoint, so both probes are TCP socket checks.
+  livenessProbe:
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
+  readinessProbe:
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
+
+  # The API never talks to the Kubernetes API.
+  automountServiceAccountToken: false
+
+  podSecurityContext:
+    runAsNonRoot: true
+    # The image's USER is `bun`, a name - the kubelet can't prove a named user
+    # is non-root, so runAsNonRoot needs an explicit numeric uid/gid to match.
+    runAsUser: 1000
+    runAsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+
+  podAnnotations: {}
+  podLabels: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# Connection details used to build DATABASE_URL for the API. Defaults are
+# derived from the mongodb subchart values below.
+database:
+  # Full connection string override. Set this to point at an external MongoDB /
+  # DocumentDB cluster (and set mongodb.enabled=false).
+  url: ""
+  # Defaults to the headless Service created by the mongodb subchart.
+  host: ""
+  port: 27017
+  name: mydatabase
+  directConnection: true
+
+mongodb:
+  enabled: true
+  # Change streams (used by the watcher) only exist on a replica set, never on a
+  # standalone mongod, so the architecture must stay "replicaset" even though a
+  # single node is enough for local/dev use.
+  architecture: replicaset
+  replicaCount: 1
+  # The apps' connection strings carry no credentials, so auth stays off.
+  # Enabling it requires putting user/password into database.url (and the
+  # watcher's database.url) and creating the user in auth.usernames/databases.
+  auth:
+    enabled: false
+  # Must match the replicaSet= value in the connection strings.
+  replicaSetName: rs0
+  # With one data node an arbiter only raises the majority to 2, which stalls the
+  # w=majority writes both apps use whenever either pod restarts.
+  arbiter:
+    enabled: false
+  persistence:
+    enabled: true
+    size: 8Gi
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+watcher:
+  enabled: true
+  image:
+    repository: watcher
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  # Subcharts cannot read parent values, so these mirror the `database` and
+  # `mongodb` blocks above - keep them in sync.
+  database:
+    host: "{{ .Release.Name }}-mongodb-headless"
+    port: 27017
+    name: mydatabase
+    replicaSetName: rs0
+    directConnection: true

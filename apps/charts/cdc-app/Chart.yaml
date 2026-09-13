@@ -1,0 +1,18 @@
+apiVersion: v2
+name: cdc-app
+description: CDC demo system - Bun/Elysia API, MongoDB change-stream watcher, and a MongoDB replica set.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+maintainers:
+  - name: David Haylock
+    email: davidkhaylock@gmail.com
+dependencies:
+  - name: mongodb
+    version: 19.2.1
+    repository: https://charts.bitnami.com/bitnami
+    condition: mongodb.enabled
+  - name: watcher
+    version: 0.1.0
+    repository: file://../watcher
+    condition: watcher.enabled

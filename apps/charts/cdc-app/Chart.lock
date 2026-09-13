@@ -1,0 +1,9 @@
+dependencies:
+- name: mongodb
+  repository: https://charts.bitnami.com/bitnami
+  version: 19.2.1
+- name: watcher
+  repository: file://../watcher
+  version: 0.1.0
+digest: sha256:bcd4f230717d27c1a0af361de38dc7f8c4fe46ceeb2529e3f04a47d4fee5226c
+generated: "2026-09-11T23:08:48.945066+01:00"

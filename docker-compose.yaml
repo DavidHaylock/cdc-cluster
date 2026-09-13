@@ -1,0 +1,59 @@
+services:
+  mongo:
+    image: bitnamisecure/mongodb:latest
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      - MONGODB_ENABLE_AUTH=no
+      - ALLOW_EMPTY_PASSWORD=yes
+      - MONGODB_PORT_NUMBER=27017
+      - MONGODB_EXTRA_FLAGS=--quiet --logpath /dev/null
+      - MONGODB_REPLICA_SET_MODE=primary
+      - MONGODB_REPLICA_SET_NAME=rs0
+    volumes:
+      - ./mongo_data:/bitnami/mongodb
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    container_name: doc_db_api
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      - DATABASE_URL=mongodb://mongo:27017/mydatabase?directConnection=true&retryWrites=true&w=majority&replicaSet=rs0
+      - PORT=3001
+    depends_on:
+      - mongo
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3001/health || exit 1"]
+      interval: 5s
+      timeout: 30s
+      retries: 5
+      start_period: 10s
+  watcher:
+    build:
+      context: ./apps/watcher
+      dockerfile: Dockerfile
+    container_name: doc_db_watcher
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=mongodb://mongo:27017/mydatabase?directConnection=true&retryWrites=true&w=majority&replicaSet=rs0
+      - HEALTH_PORT=3002
+    depends_on:
+      - mongo
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "bun",
+          "-e",
+          "fetch('http://localhost:3002/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+volumes:
+  mongo_data:

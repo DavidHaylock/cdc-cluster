@@ -1,0 +1,13 @@
+apiVersion: v2
+name: watcher
+description: Background worker that tails a MongoDB change stream and persists resume tokens.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - cdc
+  - mongodb
+  - change-stream
+maintainers:
+  - name: David Haylock
+    email: davidkhaylock@gmail.com
